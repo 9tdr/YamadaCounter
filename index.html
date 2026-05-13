@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yamada Counter</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f0f2f5; font-family: 'Chakra Petch', sans-serif; user-select: none; }
+    .counter-card { border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); background: white; padding: 25px; margin-bottom: 20px; border: none; }
+    .btn-counter { height: 130px; font-size: 3rem; border-radius: 20px; font-weight: 700; width: 100%; transition: 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); border: none; }
+    .btn-counter:active { transform: scale(0.9); }
+    .count-display { font-size: 4.5rem; font-weight: 800; color: #1a202c; line-height: 1; }
+    .time-slot-badge { font-size: 1.1rem; background-color: #4a5568; color: white; padding: 8px 20px; border-radius: 50px; font-weight: 600; }
+    .badge-test { background-color: #e53e3e !important; }
+    .table-yamada { background: white; border-radius: 16px; overflow: hidden; border: none; }
+    .table-yamada thead { background: #2d3748; color: white; border: none; }
+    #status-msg { font-size: 0.95rem; color: #38a169; font-weight: 700; min-height: 1.5em; }
+    #admin-panel { display: none; background: #fff3bf; padding: 20px; border-radius: 20px; margin-bottom: 20px; border: 2px dashed #fab005; }
+  </style>
+</head>
+<body>
+
+<div class="container py-4 text-center">
+  <h1 class="fw-bold mb-1" onclick="handleSecretClick()" style="cursor: pointer;">ยอด Yamada</h1>
+  <p id="current-date" class="text-muted small mb-3"></p>
+  
+  <div class="mb-4">
+    <span id="current-slot" class="time-slot-badge">กำลังโหลดข้อมูล...</span>
+  </div>
+
+  <div id="admin-panel">
+    <h6 class="fw-bold text-dark mb-3">🛠️ แผงควบคุม Admin ลับ</h6>
+    <div class="form-check form-switch d-flex justify-content-center">
+      <input class="form-check-input" type="checkbox" id="testModeSwitch" onchange="toggleTestMode()">
+      <label class="form-check-label ms-2 fw-bold" for="testModeSwitch">เปิดโหมดทดสอบ (ไม่อิงเวลา)</label>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6">
+      <div class="counter-card">
+        <div class="text-secondary fw-bold small mb-2">🚙 จำนวนรถ</div>
+        <div id="car-count" class="count-display">0</div>
+        <button class="btn btn-primary btn-counter mt-3 shadow-sm" onclick="addCount('car')">+</button>
+      </div>
+    </div>
+    <div class="col-6">
+      <div class="counter-card">
+        <div class="text-secondary fw-bold small mb-2">👫 จำนวนคน</div>
+        <div id="person-count" class="count-display">0</div>
+        <button class="btn btn-success btn-counter mt-3 shadow-sm" onclick="addCount('person')">+</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-grid gap-2 mb-4">
+    <button id="save-btn" class="btn btn-dark btn-lg py-3 rounded-4 fw-bold" onclick="saveData()">💾 บันทึกข้อมูลปัจจุบัน</button>
+    <div id="status-msg"></div>
+  </div>
+
+  <div class="table-responsive shadow-sm rounded-4">
+    <table class="table table-yamada align-middle mb-0">
+      <thead>
+        <tr>
+          <th class="py-3">ช่วงเวลา</th>
+          <th class="py-3">รถ</th>
+          <th class="py-3">คน</th>
+        </tr>
+      </thead>
+      <tbody id="summary-body" class="fw-semibold"></tbody>
+      <tfoot class="table-light fw-bold">
+        <tr>
+          <td class="py-3">รวมยอดวัน</td>
+          <td id="total-cars" class="text-primary py-3">0</td>
+          <td id="total-people" class="text-success py-3">0</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="d-grid mt-4">
+    <button class="btn btn-outline-primary py-2 rounded-3 fw-bold" onclick="copyDailySummary()">📋 คัดลอกสรุปส่งรายงาน</button>
+  </div>
+</div>
+
+<script>
+  // 🔗 วางลิงก์ Web App URL ของพี่ตรงนี้ครับ
+  const scriptURL = "https://script.google.com/macros/s/AKfycby3-JFD_j0VZ5xyo8TC3I61QYxuWhVxoyIkRTQasqvCSbUQbImWpt2q4Fm_MNzWD7ckCg/exec";
+
+  let counts = { car: 0, person: 0 };
+  let isAdminMode = false;
+  let secretClickCount = 0;
+  let secretTimer;
+
+  const timeSlots = ["12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00", "16:00-17:00", "17:00-18:00", "18:00-19:00", "19:00-20:00", "20:00-21:00", "21:00-22:00"];
+
+  function handleSecretClick() {
+    secretClickCount++;
+    clearTimeout(secretTimer);
+    if (secretClickCount >= 5) {
+      document.getElementById('admin-panel').style.display = 'block';
+      alert("เปิดแผงควบคุมแอดมินแล้ว!");
+      secretClickCount = 0;
+    }
+    secretTimer = setTimeout(() => { secretClickCount = 0; }, 2000);
+  }
+
+  function toggleTestMode() {
+    isAdminMode = document.getElementById('testModeSwitch').checked;
+    updateDisplay();
+    refreshTable();
+  }
+
+  function updateDisplay() {
+    document.getElementById('car-count').innerText = counts.car;
+    document.getElementById('person-count').innerText = counts.person;
+    const now = new Date();
+    document.getElementById('current-date').innerText = now.toLocaleDateString('th-TH', { dateStyle: 'full' });
+    const badge = document.getElementById('current-slot');
+    if (isAdminMode) {
+      badge.innerText = "🛠️ โหมดทดสอบ (ADMIN)";
+      badge.className = "time-slot-badge badge-test";
+      document.getElementById('save-btn').disabled = false;
+      return "โหมดทดสอบ";
+    } else {
+      const hour = now.getHours();
+      const slot = timeSlots.find(s => parseInt(s.split(':')[0]) === hour) || "นอกเวลาทำการ";
+      badge.innerText = slot;
+      badge.className = "time-slot-badge";
+      document.getElementById('save-btn').disabled = (slot === "นอกเวลาทำการ");
+      return slot;
+    }
+  }
+
+  async function callAPI(action, data) {
+    const response = await fetch(scriptURL, {
+      method: "POST",
+      body: JSON.stringify({ action, data })
+    });
+    return await response.json();
+  }
+
+  function addCount(type) {
+    const slot = updateDisplay();
+    if (!isAdminMode && slot === "นอกเวลาทำการ") return alert("ไม่อยู่ในช่วงเวลาทำงาน");
+    counts[type]++;
+    updateDisplay();
+    saveData(true);
+  }
+
+  async function saveData(isSilent = false) {
+    const slot = updateDisplay();
+    if (!isAdminMode && slot === "นอกเวลาทำการ") return;
+    if (!isSilent) document.getElementById('status-msg').innerText = "🔄 กำลังบันทึก...";
+    
+    try {
+      await callAPI("record", { timeSlot: slot, cars: counts.car, people: counts.person });
+      if (!isSilent) {
+        document.getElementById('status-msg').innerText = "✅ บันทึกสำเร็จ!";
+        setTimeout(() => document.getElementById('status-msg').innerText = "", 2000);
+      }
+      refreshTable();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function refreshTable() {
+    try {
+      const data = await callAPI("getSummary", {});
+      const tbody = document.getElementById('summary-body');
+      let html = "";
+      let totalCars = 0; let totalPeople = 0;
+      const currentSlot = updateDisplay();
+
+      const displaySlots = isAdminMode ? [...timeSlots, "โหมดทดสอบ"] : timeSlots;
+
+      displaySlots.forEach(slot => {
+        let row = data.find(d => d.timeSlot === slot) || { cars: 0, people: 0 };
+        if (slot === currentSlot) {
+          row.cars = Math.max(row.cars, counts.car);
+          row.people = Math.max(row.people, counts.person);
+          counts.car = row.cars; counts.person = row.people;
+          updateDisplay();
+        }
+        const isTest = slot === "โหมดทดสอบ";
+        html += `<tr class="${isTest ? 'table-warning' : ''}"><td>${slot}</td><td>${row.cars}</td><td>${row.people}</td></tr>`;
+        if (!isTest) { totalCars += row.cars; totalPeople += row.people; }
+      });
+      tbody.innerHTML = html;
+      document.getElementById('total-cars').innerText = totalCars;
+      document.getElementById('total-people').innerText = totalPeople;
+    } catch (err) { console.error(err); }
+  }
+
+  function copyDailySummary() {
+    const dateStr = new Date().toLocaleDateString('th-TH');
+    const cars = document.getElementById('total-cars').innerText;
+    const people = document.getElementById('total-people').innerText;
+    const text = `สรุปยอด Yamada วันที่ ${dateStr} ดังนี้\n\n🚙 ยอดรถ ${cars} คัน\n👫 ยอดคน ${people} คน`;
+    navigator.clipboard.writeText(text).then(() => alert("คัดลอกสรุปแล้ว!"));
+  }
+
+  updateDisplay();
+  refreshTable();
+  setInterval(updateDisplay, 60000);
+</script>
+</body>
+</html>
